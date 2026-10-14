@@ -1,0 +1,190 @@
+// Prisma Schema for StudentFund
+// Configured with SQLite for immediate zero-install execution & local testing
+// For PostgreSQL in production, see schema.postgresql.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String               @id @default(uuid())
+  email            String               @unique
+  password         String
+  name             String
+  college          String?
+  course           String?
+  currentSemester  Int?                 @default(1)
+  monthlyAllowance Float?               @default(0)
+  currency         String               @default("INR")
+  isDemo           Boolean              @default(false)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  incomes          Income[]
+  expenses         Expense[]
+  budgets          Budget[]
+  commitments      CollegeCommitment[]
+  savingsGoals     SavingsGoal[]
+  savingsLogs      SavingsContribution[]
+  reminders        Reminder[]
+  literacyProgress LiteracyProgress[]
+  settings         UserSettings?
+
+  @@index([email])
+}
+
+model UserSettings {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme               String   @default("dark") // "dark" or "light"
+  runwayBufferDays    Int      @default(30)
+  enableAlerts        Boolean  @default(true)
+  budgetWarningThresh Int      @default(80) // 80%
+  currencySymbol      String   @default("₹")
+  updatedAt           DateTime @updatedAt
+}
+
+model Income {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount       Float
+  source       String    // "Allowance", "Scholarship", "Stipend", "Part-time", "Gift", "Other"
+  description  String
+  date         DateTime  @default(now())
+  isExpected   Boolean   @default(false) // true = expected future cash, false = actual money received
+  receivedDate DateTime?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId, date])
+  @@index([userId, isExpected])
+}
+
+model Expense {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount        Float
+  category      String    // "Tuition", "Hostel/Rent", "Food/Mess", "Transport", "Academic/Books", "Personal", "Entertainment", "Health", "Utilities", "Other"
+  description   String
+  date          DateTime  @default(now())
+  isEssential   Boolean   @default(true) // Essential vs Discretionary
+  paymentMethod String    @default("UPI") // "UPI", "Cash", "Card", "NetBanking"
+  notes         String?
+  commitmentId  String?   // Linked commitment if this was paid for a college obligation
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId, date])
+  @@index([userId, category])
+  @@index([userId, isEssential])
+}
+
+model Budget {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    String   // "OVERALL" or specific category
+  month       String   // Format: "YYYY-MM"
+  limitAmount Float
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, category, month])
+  @@index([userId, month])
+}
+
+model CollegeCommitment {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String    // e.g. "Semester 5 Tuition Fee", "Hostel Mess Deposit"
+  amount      Float
+  dueDate     DateTime
+  priority    String    @default("HIGH") // "HIGH", "MEDIUM", "LOW"
+  category    String    @default("Tuition") // "Tuition", "Hostel", "ExamFee", "Books", "LabFee", "Subscription", "Other"
+  status      String    @default("UNPAID") // "UNPAID", "PAID", "PARTIAL"
+  paidAmount  Float     @default(0)
+  expenseId   String?   // Avoid double-counting: points to the Expense when paid
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, dueDate])
+  @@index([userId, status])
+}
+
+model SavingsGoal {
+  id            String                @id @default(uuid())
+  userId        String
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  targetAmount  Float
+  currentAmount Float                 @default(0)
+  targetDate    DateTime
+  category      String                @default("GENERAL") // "EMERGENCY", "LAPTOP", "CERTIFICATION", "SEMESTER_BUFFER", "TRAVEL", "GENERAL"
+  isCompleted   Boolean               @default(false)
+  notes         String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  contributions SavingsContribution[]
+
+  @@index([userId, isCompleted])
+}
+
+model SavingsContribution {
+  id        String      @id @default(uuid())
+  goalId    String
+  goal      SavingsGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Float
+  date      DateTime    @default(now())
+  notes     String?
+  createdAt DateTime    @default(now())
+
+  @@index([goalId])
+  @@index([userId])
+}
+
+model Reminder {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  dueDate     DateTime
+  category    String   @default("COLLEGE_FEE") // "COLLEGE_FEE", "HOSTEL_RENT", "ALLOWANCE", "SUBSCRIPTION", "SAVINGS", "EXAM_REGISTRATION", "OTHER"
+  amount      Float?
+  isCompleted Boolean  @default(false)
+  priority    String   @default("HIGH") // "HIGH", "MEDIUM", "LOW"
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, dueDate])
+  @@index([userId, isCompleted])
+}
+
+model LiteracyProgress {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  moduleId    String    // e.g. "budgeting-101", "runway-mastery", "emergency-fund", "debt-traps"
+  completed   Boolean   @default(false)
+  quizScore   Int?      @default(0)
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, moduleId])
+  @@index([userId])
+}
